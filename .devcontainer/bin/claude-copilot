@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Small wrapper to provide sane defaults for local development. Environment
+# variables may be overridden by the caller.
+: "${ANTHROPIC_BASE_URL:=http://localhost:4141}"
+: "${ANTHROPIC_AUTH_TOKEN:=dummy}"
+: "${GITHUB_COPILOT_RELAY_PORT:=4141}"
+: "${ANTHROPIC_MODEL:=gpt-5-mini}"
+: "${ANTHROPIC_DEFAULT_SONNET_MODEL:=${ANTHROPIC_MODEL}}"
+: "${ANTHROPIC_DEFAULT_HAIKU_MODEL:=${ANTHROPIC_MODEL}}"
+: "${CLAUDE_CODE_SUBAGENT_MODEL:=gpt-5-mini}"
+: "${DISABLE_NON_ESSENTIAL_MODEL_CALLS:=1}"
+: "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:=1}"
+: "${BASH_MAX_TIMEOUT_MS:=600000}"
+: "${CLAUDE_CODE_ATTRIBUTION_HEADER:=0}"
+: "${CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION:=false}"
+
+# Parse command-line arguments and allow overriding the model with -m/--model.
+# Any -m/--model arguments are consumed and not passed through to the final
+# `claude` invocation.
+pass_args=()
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -m)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: -m requires an argument" >&2
+        exit 2
+      fi
+      ANTHROPIC_MODEL="$2"
+      shift 2
+      ;;
+    --model)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --model requires an argument" >&2
+        exit 2
+      fi
+      ANTHROPIC_MODEL="$2"
+      shift 2
+      ;;
+    --model=*)
+      ANTHROPIC_MODEL="${1#--model=}"
+      shift
+      ;;
+    -m*)
+      # Support combined form like -mgpt-5-mini
+      ANTHROPIC_MODEL="${1#-m}"
+      shift
+      ;;
+    *)
+      pass_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+export ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL \
+  ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+  CLAUDE_CODE_SUBAGENT_MODEL DISABLE_NON_ESSENTIAL_MODEL_CALLS \
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC BASH_MAX_TIMEOUT_MS \
+  CLAUDE_CODE_ATTRIBUTION_HEADER CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
+
+# Execute the 'claude' command with any arguments passed through (excluding
+# any -m/--model options consumed above).
+exec claude "${pass_args[@]}"

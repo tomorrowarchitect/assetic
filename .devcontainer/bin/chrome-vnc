@@ -1,0 +1,192 @@
+#!/bin/bash
+set -euo pipefail
+
+# Bootstrap Xvfb + window manager + VNC + noVNC for the devcontainer
+# This script initializes a complete virtual display environment with VNC access
+
+# ============================================================================
+# CONFIGURATION CONSTANTS
+# ============================================================================
+DISPLAY_NUM=1
+# Allow overriding via env vars; defaults are set above using parameter expansion
+: "${DISPLAY_NUM:=1}"
+: "${SCREEN_RES:=1920x1080x24}"
+: "${VNC_PORT:=5900}"
+# VNC web interface port (configurable via env or default)
+: "${VNC_WEB_PORT:=6080}"
+
+NOVNC_PATH="/usr/share/novnc"
+X11_SOCKET_DIR="/tmp/.X11-unix"
+XVFB_DISPLAY_SOCKET="${X11_SOCKET_DIR}/X${DISPLAY_NUM}"
+BROWSER_URL="about:blank"
+# Read remote debug port from env or default to 9222
+: "${CHROME_REMOTE_DEBUG_PORT:=9222}"
+
+DISPLAY_SOCKET_WAIT_RETRIES=10
+DISPLAY_SOCKET_WAIT_INTERVAL=0.2
+
+# ============================================================================
+# STATE MANAGEMENT
+# ============================================================================
+PIDS=()
+# Helper to append PIDs safely
+append_pid() {
+  PIDS+=("$1")
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+log() {
+  # Log a message with timestamp and formatting
+  local level=$1
+  shift
+  local message="$@"
+  echo "[$(date +'%Y-%m-%d %H:%M:%S')] [$level] $message" >&2
+}
+
+error() {
+  # Log an error message and exit with failure code
+  log "ERROR" "$@"
+  exit 1
+}
+
+start_background() {
+  # Start a command in the background and record its PID for cleanup
+  # Usage: start_background <cmd...>
+  "$@" >/dev/null 2>&1 &
+  local pid=$!
+  append_pid "$pid"
+  log "INFO" "Started: $* (PID $pid)"
+}
+
+verify_service() {
+  # Verify that a service process is still running
+  # Usage: verify_service <service_name> <pid>
+  local service_name=$1
+  local pid=$2
+
+  if ! kill -0 "${pid:-}" 2>/dev/null; then
+    error "$service_name failed to start or crashed (PID: $pid)"
+  fi
+  log "INFO" "$service_name is running (PID: $pid)"
+}
+
+wait_for_display_socket() {
+  # Wait for the X display socket to appear with fallback to sleep
+  local socket="$XVFB_DISPLAY_SOCKET"
+  local retries=$DISPLAY_SOCKET_WAIT_RETRIES
+  local interval=$DISPLAY_SOCKET_WAIT_INTERVAL
+  local i=0
+
+  log "INFO" "Waiting for X display socket at $socket..."
+  while [ "$i" -lt "$retries" ]; do
+    if [ -e "$socket" ]; then
+      log "INFO" "X display socket found"
+      return 0
+    fi
+    sleep "$interval"
+    i=$((i + 1))
+  done
+
+  # Fallback sleep to ensure Xvfb is fully initialized
+  log "WARN" "Socket not found after ${retries} retries, applying fallback sleep..."
+  sleep 1
+}
+
+cleanup() {
+  # Kill all background services we started
+  log "INFO" "Cleaning up background services..."
+  for pid in "${PIDS[@]:-}"; do
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+      log "INFO" "Terminating PID ${pid}..."
+      kill "${pid}" 2>/dev/null || true
+    fi
+  done
+  log "INFO" "Cleanup complete"
+}
+
+# ============================================================================
+# TRAP HANDLERS
+# ============================================================================
+trap cleanup EXIT INT TERM
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+log "INFO" "=== Chrome VNC Bootstrap Started ==="
+
+# Clean up stale X server locks and sockets
+log "INFO" "Cleaning stale X server state..."
+rm -f /tmp/.X*-lock
+rm -f /tmp/.X11-unix/X1 2>/dev/null || true
+
+# Ensure the X11 socket directory exists with proper permissions
+mkdir -p "$X11_SOCKET_DIR"
+chmod 1777 "$X11_SOCKET_DIR"
+log "INFO" "X11 socket directory ready: $X11_SOCKET_DIR"
+
+# ============================================================================
+# SERVICE STARTUP
+# ============================================================================
+
+# 1) Start virtual display (Xvfb)
+# Provides a headless X server for running GUI applications
+log "INFO" "Starting Xvfb (virtual display :$DISPLAY_NUM, resolution $SCREEN_RES)..."
+start_background Xvfb ":$DISPLAY_NUM" -screen 0 "$SCREEN_RES"
+XVFB_PID=${PIDS[-1]}
+export DISPLAY=":$DISPLAY_NUM"
+
+# Wait for Xvfb to create the display socket
+wait_for_display_socket
+
+# 2) Start lightweight window manager (fluxbox)
+# Manages windows and provides a desktop environment
+log "INFO" "Starting fluxbox (window manager)..."
+start_background fluxbox
+FLUXBOX_PID=${PIDS[-1]}
+
+# 3) Start VNC server (x11vnc)
+# Provides VNC protocol access to the X display
+log "INFO" "Starting x11vnc (VNC server on port $VNC_PORT)..."
+start_background x11vnc -display ":$DISPLAY_NUM" -nopw -forever -quiet
+X11VNC_PID=${PIDS[-1]}
+
+# 4) Start noVNC websocket bridge
+# Provides web-based access to the VNC display
+log "INFO" "Starting noVNC (web interface on port $VNC_WEB_PORT)..."
+start_background "$NOVNC_PATH/utils/novnc_proxy" \
+  --web "$NOVNC_PATH" \
+  --listen "$VNC_WEB_PORT" \
+  --vnc "localhost:$VNC_PORT"
+NOVNC_PID=${PIDS[-1]}
+
+log "INFO" "=== All services started successfully ==="
+log "INFO" "Service Details:"
+log "INFO" "  Xvfb    (display)  : PID=$XVFB_PID"
+log "INFO" "  fluxbox (wm)       : PID=$FLUXBOX_PID"
+log "INFO" "  x11vnc  (vnc)      : PID=$X11VNC_PID port=$VNC_PORT"
+log "INFO" "  noVNC   (web)      : PID=$NOVNC_PID port=$VNC_WEB_PORT"
+
+# ============================================================================
+# LAUNCH BROWSER
+# ============================================================================
+
+log "INFO" "Launching Chromium browser in background..."
+chromium-browser --no-sandbox --remote-debugging-port="$CHROME_REMOTE_DEBUG_PORT" "$BROWSER_URL" >/dev/null 2>&1 &
+append_pid $!
+CHROME_PID=$!
+log "INFO" "Chromium launched (PID: $CHROME_PID)"
+
+log "INFO" "VNC interface available at: http://localhost:$VNC_WEB_PORT/vnc.html"
+
+# ============================================================================
+# KEEP RUNNING
+# ============================================================================
+
+# Keep script running by waiting on the main Xvfb process
+# Script will exit if Xvfb dies or when interrupted
+log "INFO" "Waiting on Xvfb process (PID=$XVFB_PID)..."
+wait "$XVFB_PID"

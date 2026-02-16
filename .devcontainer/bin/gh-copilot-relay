@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Default relay port (can be overridden via environment)
+: "${GITHUB_COPILOT_RELAY_PORT:=4141}"
+
+# Allow overriding which copilot api package to run via npx.
+# Default changed to the requested package name.
+: "${COPILOT_API_PACKAGE:=@jeffreycao/copilot-api@latest}"
+
+# Start the GitHub Copilot relay via npx. Arguments are forwarded.
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  exec npx -y "$COPILOT_API_PACKAGE" start --port "$GITHUB_COPILOT_RELAY_PORT" --github-token "$GITHUB_TOKEN" "$@"
+else
+  exec npx -y "$COPILOT_API_PACKAGE" start --port "$GITHUB_COPILOT_RELAY_PORT" "$@"
+fi

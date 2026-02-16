@@ -1,0 +1,36 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "mhutchie.git-graph",
+                "GitHub.copilot-chat",
+                "GitHub.copilot",
+                "Anthropic.claude-code"
+            ],
+            "settings": {
+                "remote.autoForwardPorts": false
+            }
+        }
+    },
+    "forwardPorts": [
+        6080
+    ],
+    "initializeCommand": ".devcontainer/initializeCommand.sh",
+    "postStartCommand": "/usr/local/bin/postStartCommand.sh",
+    "remoteEnv": {
+        "CHROME_REMOTE_DEBUG_PORT": "9222",
+        "EDITOR": "code --wait",
+        "GITHUB_COPILOT_RELAY_PORT": "4141",
+        "GNUPGHOME": "/home/vscode/.gnupg-container",
+        "SCREEN_RES": "1920x1080x24",
+        "VNC_PORT": "5900",
+        "VNC_WEB_PORT": "6080"
+    },
+    "runArgs": [
+        "--shm-size=2gb",
+        "--env-file=.devcontainer/.env"
+    ]
+}

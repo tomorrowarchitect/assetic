@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+
+# configure-chrome-devtools-mcp
+# Opportunistically configure Chrome DevTools MCP for this project:
+# - opencode.json (if opencode CLI present)
+# - project-scoped Claude config: ./.config/claude/mcp.json
+# - VS Code: ./.vscode/mcp.json
+#
+# Behavior:
+# - Uses npx to run chrome-devtools-mcp; defaults to allowing network fetch (npx -y).
+# - Does not install into node_modules.
+# - Run from repository root.
+
+set -euo pipefail
+
+# Configurable variables (can be overridden in environment)
+: "${PACKAGE_NAME:=chrome-devtools-mcp}"
+: "${PACKAGE_VERSION:=latest}"
+: "${BROWSER_URL:=http://127.0.0.1:9222}"
+# NPX flag to use. Default is -y to allow npx to fetch from the network.
+: "${NPX_ARG_FLAG:=-y}"
+
+# Require jq
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required but not found in PATH." >&2
+  exit 1
+fi
+
+# Helper: update a JSON file atomically using jq filter and optional --argjson value
+_update_json_with_argjson() {
+  # _update_json_with_argjson <file> <jq_filter> <json_value_or_empty>
+  local file="$1"; shift
+  local filter="$1"; shift
+  local json_val="$1"; shift || true
+
+  if [ -z "$json_val" ]; then
+    jq "$filter" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  else
+    jq --argjson val "$json_val" "$filter" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  fi
+}
+
+# Generate the server entry object for chrome-devtools (returned as compact JSON)
+generate_chrome_devtools_server_config() {
+  jq -n --arg pkg "${PACKAGE_NAME}@${PACKAGE_VERSION}" --arg url "${BROWSER_URL}" --arg npxflag "${NPX_ARG_FLAG}" '{
+    type: "stdio",
+    command: "npx",
+    args: [ $npxflag, $pkg, "--browser-url=" + $url ]
+  }'
+}
+
+# -----------------
+# Opencode (if present)
+# -----------------
+if command -v opencode >/dev/null 2>&1; then
+  echo "Opencode CLI detected, configuring opencode.json..."
+
+  if [ ! -f "opencode.json" ]; then
+    echo "Creating opencode.json..."
+    echo '{"$schema": "https://opencode.ai/config.json", "mcp": {}}' | jq . > opencode.json
+  fi
+
+  if ! jq -e '.mcp."chrome-devtools"' opencode.json >/dev/null 2>&1; then
+    echo "Adding chrome-devtools MCP config to opencode.json..."
+    # Build command array value using shell interpolation
+    update_json_filter='.mcp."chrome-devtools" = {"command": ["npx", "'"${NPX_ARG_FLAG}"'", "'"${PACKAGE_NAME}@${PACKAGE_VERSION}"'", "--browser-url=${BROWSER_URL}"], "type": "local"}'
+    jq "$update_json_filter" opencode.json > opencode.json.tmp && mv opencode.json.tmp opencode.json
+  else
+    echo "Chrome-devtools MCP config already present in opencode.json."
+  fi
+else
+  echo "Opencode CLI not installed, skipping opencode.json configuration."
+fi
+
+# -----------------
+# Claude (project-scoped only)
+# Write only to ./.config/claude/mcp.json (Option A)
+# -----------------
+CLAUDE_CFG_DIR="./.config/claude"
+CLAUDE_MCP_FILE="${CLAUDE_CFG_DIR}/mcp.json"
+mkdir -p "${CLAUDE_CFG_DIR}"
+
+if command -v claude >/dev/null 2>&1; then
+  echo "Claude CLI detected, configuring project-scoped Claude MCP at ${CLAUDE_MCP_FILE}..."
+
+  server_json=$(generate_chrome_devtools_server_config)
+
+  if [ ! -f "${CLAUDE_MCP_FILE}" ]; then
+    echo "Creating ${CLAUDE_MCP_FILE} with chrome-devtools config..."
+    {
+      echo '{'
+      echo '  "servers": {'
+      echo '    "chrome-devtools":'
+      echo "$server_json"
+      echo '  },'
+      echo '  "inputs": []'
+      echo '}'
+    } > "${CLAUDE_MCP_FILE}"
+  else
+    echo "Updating ${CLAUDE_MCP_FILE} with chrome-devtools config, preserving existing..."
+    jq --argjson srv "$server_json" '.servers["chrome-devtools"] = $srv | .inputs = []' "${CLAUDE_MCP_FILE}" > "${CLAUDE_MCP_FILE}.tmp" && mv "${CLAUDE_MCP_FILE}.tmp" "${CLAUDE_MCP_FILE}"
+  fi
+else
+  echo "Claude CLI not found, skipping Claude Code configuration."
+fi
+
+# -----------------
+# VS Code MCP configuration (always)
+# -----------------
+mkdir -p .vscode
+VSCODE_MCP_FILE=".vscode/mcp.json"
+server_json_for_vscode=$(generate_chrome_devtools_server_config)
+
+if [ ! -f "$VSCODE_MCP_FILE" ]; then
+  echo "Creating $VSCODE_MCP_FILE with chrome-devtools config..."
+  cat > "$VSCODE_MCP_FILE" <<EOF
+{
+  "servers": {
+    "chrome-devtools":
+$(echo "$server_json_for_vscode")
+  },
+  "inputs": []
+}
+EOF
+else
+  echo "Updating $VSCODE_MCP_FILE with chrome-devtools config, preserving existing..."
+  jq --argjson srv "$server_json_for_vscode" '.servers["chrome-devtools"] = $srv | .inputs = []' "$VSCODE_MCP_FILE" > "$VSCODE_MCP_FILE.tmp" && mv "$VSCODE_MCP_FILE.tmp" "$VSCODE_MCP_FILE"
+fi
+
+echo "Chrome DevTools MCP configuration completed successfully."

@@ -1,0 +1,20 @@
+{
+    "terminal.integrated.profiles.linux": {
+        "Chromium MCP Remote": {
+            "icon": "globe",
+            "path": "chrome-vnc"
+        },
+        "Claude Code - Raptor Mini": {
+            "args": [
+                "-c",
+                "cd ${workspaceFolder} && claude-copilot -m oswe-vscode-prime"
+            ],
+            "icon": "copilot",
+            "path": "/bin/bash"
+        },
+        "GitHub Copilot Relay": {
+            "icon": "link",
+            "path": "gh-copilot-relay"
+        }
+    }
+}
