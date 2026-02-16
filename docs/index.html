@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Assetic — App Icon Generator</title>
+    <meta name="description" content="Generate an Xcode AppIcon.appiconset (iOS / iPadOS / macOS / watchOS / tvOS) and download as a zip." />
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div>
+          <h1>Assetic</h1>
+          <p class="tagline">Generate AppIcon.appiconset for Xcode — iOS, iPadOS, macOS, watchOS, tvOS & visionOS</p>
+        </div>
+        <div class="controls">
+          <label class="theme-toggle">
+            <input id="themeCheckbox" type="checkbox" />
+            <span id="themeLabel">Light</span>
+          </label>
+        </div>
+      </header>
+
+      <section class="card upload-card">
+        <div class="drop-area" id="dropArea">
+          <input id="fileInput" type="file" accept="image/*" />
+          <div class="drop-content">
+            <strong>Drop an image</strong>
+            <span>or click to choose — PNG / JPEG / WEBP supported (max 25 MB)</span>
+          </div>
+        </div>
+
+        <div class="options">
+          <div class="option">
+            <label>Crop behaviour</label>
+            <select id="cropMode">
+              <option value="cover">Center crop (recommended)</option>
+              <option value="contain">Fit (letterbox)</option>
+            </select>
+          </div>
+          <div class="option">
+            <label>Platforms</label>
+            <div class="platforms">
+              <label><input type="checkbox" checked id="plat-ios" /> iOS</label>
+              <label><input type="checkbox" checked id="plat-ipad" /> iPadOS</label>
+              <label><input type="checkbox" checked id="plat-mac" /> macOS</label>
+              <label><input type="checkbox" checked id="plat-watch" /> watchOS</label>
+              <label><input type="checkbox" checked id="plat-tv" /> tvOS</label>
+              <label><input type="checkbox" checked id="plat-vision" /> visionOS</label>
+            </div>
+            <div style="margin-top:8px">
+              <label style="font-weight:600"><input type="checkbox" id="plat-vision-stack" /> Include visionOS solid image stack (3D layers, optional)</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="generateBtn" disabled>Generate ZIP</button>
+          <div id="status" class="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="card preview-card" id="previewCard" hidden>
+        <h2>Preview & files</h2>
+        <p class="muted">Images are generated client-side and packed as <code>AppIcon.appiconset</code> with a Contents.json so you can drop it straight into Xcode.</p>
+        <div id="previewGrid" class="preview-grid"></div>
+        <details class="details">
+          <summary>What we include</summary>
+          <ul>
+            <li>All standard AppIcon sizes for the selected platforms.</li>
+            <li>Correct filenames + Contents.json so Xcode recognises the set.</li>
+            <li>Client-side only — nothing is uploaded to a server.</li>
+          </ul>
+        </details>
+      </section>
+
+      <footer class="footer">
+        <small>Made with ♥ — Assetic · Saves an <code>AppIcon.appiconset.zip</code> you can unzip and drop into an Xcode asset catalog.</small>
+      </footer>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
