@@ -269,6 +269,23 @@ async function generateAppIconZip() {
   generateBtn.disabled = true;
   setStatus('Loading image...');
 
+  // helper: GA4 event push (no-op if gtag not present)
+  function trackGenerateEvent(platforms, visionStack, cropMode) {
+    try {
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'generate_zip', {
+          platforms: platforms.join(','),
+          vision_stack: !!visionStack,
+          crop_mode: cropMode
+        });
+      }
+    } catch (err) {
+      // fail silently if analytics blocked
+      console.debug('gtag event failed', err);
+    }
+  }
+
+
   let source;
   try {
     source = await loadImageBitmap(selectedFile);
@@ -363,10 +380,24 @@ async function generateAppIconZip() {
   setStatus('Creating zip…');
   try {
     const zblob = await zip.generateAsync({ type: 'blob' });
+
+    // Analytics: track successful generation (GA4 event via gtag)
+    const selectedPlatforms = [];
+    if (platIos.checked) selectedPlatforms.push('iOS');
+    if (platIpad.checked) selectedPlatforms.push('iPadOS');
+    if (platMac.checked) selectedPlatforms.push('macOS');
+    if (platWatch.checked) selectedPlatforms.push('watchOS');
+    if (platTv.checked) selectedPlatforms.push('tvOS');
+    if (platVision.checked) selectedPlatforms.push('visionOS');
+
+    trackGenerateEvent(selectedPlatforms, platVisionStack && platVisionStack.checked, cropMode);
+
     saveAs(zblob, 'AppIcon.appiconset.zip');
     setStatus('Done — downloaded AppIcon.appiconset.zip');
   } catch (err) {
     console.error(err);
+    // Analytics: optional failure event
+    try { if (typeof window.gtag === 'function') window.gtag('event', 'generate_zip_failed', { crop_mode: cropMode, vision_stack: platVisionStack && platVisionStack.checked }); } catch(e){}
     setStatus('Failed to create ZIP.', true);
   } finally {
     generateBtn.disabled = false;
