@@ -1,3 +1,5 @@
+[![Open in DevPod!](https://devpod.sh/assets/open-in-devpod.svg)](https://devpod.sh/open#https://github.com/tomorrowarchitect/assetic)
+
 Assetic — App Icon Generator
 
 A tiny, client-side web app that generates an Xcode AppIcon.appiconset (zip) for iOS / iPadOS / macOS / watchOS / tvOS / visionOS.
